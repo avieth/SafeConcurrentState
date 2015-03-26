@@ -23,6 +23,8 @@ module Control.Concurrent.SafeConcurrentState (
   , embedIO
   , get
   , set
+  , modify
+  , modify'
   , run
   , runBracket
   , runBracketRethrow
@@ -69,8 +71,15 @@ set :: s -> SafeConcurrentState s ()
 set x = SafeConcurrentState $ \tvar -> Concurrently . atomically $ writeTVar tvar x
 
 -- | Atomically modify the state.
-modify :: (s -> s) -> SafeConcurrentState s ()
-modify f = SafeConcurrentState $ \tvar -> Concurrently . atomically $ modifyTVar tvar f
+modify :: (s -> (a, s)) -> SafeConcurrentState s a
+modify f = SafeConcurrentState $ \tvar -> Concurrently . atomically $ do
+    var <- readTVar tvar
+    (x, var') <- return $ f var
+    writeTVar tvar var'
+    return x
+
+modify' :: (s -> s) -> SafeConcurrentState s ()
+modify' f = modify (\x -> ((), f x))
 
 -- | Run a safe concurrent computation. This will never throw an exception.
 run :: s -> SafeConcurrentState s a -> IO (Either SomeException a, s)
