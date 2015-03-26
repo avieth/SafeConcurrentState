@@ -25,6 +25,7 @@ module Control.Concurrent.SafeConcurrentState (
   , set
   , run
   , runBracket
+  , runBracketRethrow
 
   ) where
 
@@ -81,10 +82,8 @@ run x action = do
     finalState <- atomically (readTVar tvar)
     return (x, finalState)
 
--- | Run a safe concurrent computation with continuations. This will throw
---   an exception if and only if the SafeConcurrentState computation threw
---   an exception, but the exception handler and finally action will be
---   run first.
+-- | Run a safe concurrent computation with continuations to be run in case of
+--   an exception or the absence of an exception.
 runBracket
   :: s
   -> SafeConcurrentState s a
@@ -98,5 +97,26 @@ runBracket
 runBracket x action onException onNoException afterwards = do
     (outcome, state) <- run x action
     case outcome of
-      Left exception -> onException (exception, state) >>= afterwards >> throw exception
+      Left exception -> onException (exception, state) >>= afterwards
       Right value -> onNoException (value, state) >>= afterwards
+
+-- | Run a safe concurrent computation with continuations. This will throw
+--   an exception if and only if the SafeConcurrentState computation threw
+--   an exception, but the exception handler and finally action will be
+--   run first.
+runBracketRethrow
+  :: s
+  -> SafeConcurrentState s a
+  -> ((SomeException, s) -> IO b)
+  -> ((a, s) -> IO b)
+  -> (b -> IO c)
+  -> IO c
+runBracketRethrow x action onException onNoException afterwards =
+    runBracket x action onException' onNoException' afterwards'
+  where
+    -- Run the original onException but pass the exception through.
+    onException' (e, s) = onException (e, s) >>= (\x -> return $ Left (e, x))
+    -- Run the original onNoException, distinguishing it from the onException
+    -- via Right
+    onNoException' = (fmap . fmap) Right onNoException
+    afterwards' = either (\(e, x) -> afterwards x >> throw e) afterwards
