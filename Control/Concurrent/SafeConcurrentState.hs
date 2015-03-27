@@ -23,6 +23,7 @@ module Control.Concurrent.SafeConcurrentState (
   , embedIO
   , get
   , set
+  , modifySTM
   , modify
   , modify'
   , run
@@ -71,12 +72,15 @@ set :: s -> SafeConcurrentState s ()
 set x = SafeConcurrentState $ \tvar -> Concurrently . atomically $ writeTVar tvar x
 
 -- | Atomically modify the state.
-modify :: (s -> (a, s)) -> SafeConcurrentState s a
-modify f = SafeConcurrentState $ \tvar -> Concurrently . atomically $ do
+modifySTM :: (s -> STM (a, s)) -> SafeConcurrentState s a
+modifySTM k = SafeConcurrentState $ \tvar -> Concurrently . atomically $ do
     var <- readTVar tvar
-    (x, var') <- return $ f var
+    (x, var') <- k var
     writeTVar tvar var'
     return x
+
+modify :: (s -> (a, s)) -> SafeConcurrentState s a
+modify f = modifySTM (return . f)
 
 modify' :: (s -> s) -> SafeConcurrentState s ()
 modify' f = modify (\x -> ((), f x))
