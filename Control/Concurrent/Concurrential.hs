@@ -78,7 +78,8 @@ runConcurrential_ :: Concurrential t -> IO (Async t)
 runConcurrential_ sc = case sc of
     SCAtom ss c -> do
         s <- ss
-        withAsync (c s) return
+        asyncS <- async $ c s
+        return asyncS
     SCBind sc next -> do
         asyncS <- runConcurrential_ sc
         s <- wait asyncS
@@ -91,7 +92,8 @@ runConcurrential_ sc = case sc of
               f <- wait asyncF
               x <- wait asyncX
               return $ f x
-        withAsync waitAndApply return
+        asyncFX <- async waitAndApply
+        return asyncFX
 
 runConcurrential :: Concurrential t -> IO t
 runConcurrential = (=<<) wait . runConcurrential_
@@ -118,5 +120,3 @@ embedIOConcurrent io = SCAtom (return ()) (const io)
 
 embedIO :: IO s -> (s -> IO t) -> Concurrential t
 embedIO = SCAtom
-
-
