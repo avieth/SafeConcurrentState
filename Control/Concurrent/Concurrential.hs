@@ -38,6 +38,20 @@ data Concurrential t where
   SCBind :: Concurrential s -> (s -> Concurrential t) -> Concurrential t
   SCAp :: Concurrential (r -> t) -> Concurrential r -> Concurrential t
 
+instance Functor Concurrential where
+  fmap f sc = case sc of
+    SCAtom s c -> SCAtom s ((fmap . fmap) f c)
+    SCBind sc k -> SCBind sc ((fmap . fmap) f k)
+    SCAp sf sx -> SCAp ((fmap . fmap) f sf) sx
+
+instance Applicative Concurrential where
+  pure x = SCAtom (return x) return
+  (<*>) = SCAp
+
+instance Monad Concurrential where
+  return = pure
+  (>>=) = SCBind
+
 -- | It's essential that we have
 --     Concurrential t -> IO (Async t)
 --   rather than just
@@ -105,20 +119,6 @@ runConcurrentialUnsafe = (=<<) wait . runConcurrential_
 
 runConcurrential :: Concurrential t -> IO t
 runConcurrential c = runConcurrentialK c wait
-
-instance Functor Concurrential where
-  fmap f sc = case sc of
-    SCAtom s c -> SCAtom s ((fmap . fmap) f c)
-    SCBind sc k -> SCBind sc ((fmap . fmap) f k)
-    SCAp sf sx -> SCAp ((fmap . fmap) f sf) sx
-
-instance Applicative Concurrential where
-  pure x = SCAtom (return x) return
-  (<*>) = SCAp
-
-instance Monad Concurrential where
-  return = pure
-  (>>=) = SCBind
 
 embedIOSequential :: IO t -> Concurrential t
 embedIOSequential io = SCAtom io return
