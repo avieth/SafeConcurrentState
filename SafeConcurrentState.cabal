@@ -17,7 +17,7 @@ extra-source-files:  README.md
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Control.Concurrent.SafeConcurrentState
+  exposed-modules:     Control.Concurrent.SafeConcurrentState, Control.Concurrent.Concurrential
   -- other-modules:       
   other-extensions:    ScopedTypeVariables, DeriveDataTypeable
   build-depends:       base >=4.7 && <4.8, stm >=2.4 && <2.5, async >=2.0 && <2.1
