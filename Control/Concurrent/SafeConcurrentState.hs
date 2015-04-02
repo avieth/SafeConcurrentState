@@ -16,13 +16,11 @@ is raised.
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 
-
 module Control.Concurrent.SafeConcurrentState (
 
     SafeConcurrentState
-  , embedIO
-  , embedIOSequential
-  , embedIOConcurrent
+  , sequentially
+  , concurrently
   , get
   , set
   , modifySTM
@@ -42,7 +40,7 @@ import qualified Control.Concurrent.Concurrential as C
 import Control.Exception
 import Data.Typeable
 
--- | A Concurrently computation which depends upon a TVar holding the state.
+-- | A Concurrential computation which depends upon a TVar holding state.
 newtype SafeConcurrentState s a = SafeConcurrentState {
     runSafeConcurrentState :: TVar s -> C.Concurrential a
   } deriving (Typeable)
@@ -61,27 +59,24 @@ instance Monad (SafeConcurrentState s) where
       x <- runSafeConcurrentState m tvar
       runSafeConcurrentState (k x) tvar
 
-embedIO :: IO r -> (r -> IO t) -> SafeConcurrentState s t
-embedIO seqAction concAction = SafeConcurrentState (\_ -> C.embedIO seqAction concAction)
+sequentially :: IO t -> SafeConcurrentState s t
+sequentially action = SafeConcurrentState $ \_ -> C.sequentially action
 
-embedIOSequential :: IO t -> SafeConcurrentState s t
-embedIOSequential action = embedIO action return
-
-embedIOConcurrent :: IO t -> SafeConcurrentState s t
-embedIOConcurrent action = embedIO (return ()) (const action)
+concurrently :: IO t -> SafeConcurrentState s t
+concurrently action = SafeConcurrentState $ \_ -> C.concurrently action
 
 -- | Get the current image of the state.
 get :: SafeConcurrentState s s
-get = SafeConcurrentState $ \tvar -> C.embedIOConcurrent . atomically $ readTVar tvar
+get = SafeConcurrentState $ \tvar -> C.concurrently . atomically $ readTVar tvar
 
 -- | Set the state.
 set :: s -> SafeConcurrentState s ()
-set x = SafeConcurrentState $ \tvar -> C.embedIOConcurrent . atomically $ writeTVar tvar x
+set x = SafeConcurrentState $ \tvar -> C.concurrently . atomically $ writeTVar tvar x
 
 -- | Atomically modify the state.
 --   This is a wart. Should remove if possible.
 modifySTM :: (s -> STM (a, s)) -> SafeConcurrentState s a
-modifySTM k = SafeConcurrentState $ \tvar -> C.embedIOConcurrent . atomically $ do
+modifySTM k = SafeConcurrentState $ \tvar -> C.concurrently . atomically $ do
     var <- readTVar tvar
     (x, var') <- k var
     writeTVar tvar var'
