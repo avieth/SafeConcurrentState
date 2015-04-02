@@ -14,7 +14,6 @@ module Control.Concurrent.Concurrential (
 
     Concurrential
 
-  , runConcurrential_
   , runConcurrential
 
   , embedIO
@@ -50,6 +49,11 @@ data Concurrential t where
 --   in the usual IO monad. The concurrent parts will be run in separate
 --   threads after their associated sequential parts (the one it's paired with
 --   in SCAtom).
+--
+--   TODO FIXME I think there are serious issues here: if one asnyc throws
+--   an exception, we'll be left with dangling threads. We can't just drop in
+--   withAsync, because that combinator does not allow the Async to escape the
+--   function. I suppose CPS is called for here.
 runConcurrential_ :: Concurrential t -> IO (Async t)
 runConcurrential_ sc = case sc of
     -- For SCAtom we do the sequential work, and then spark a thread for the
@@ -77,8 +81,30 @@ runConcurrential_ sc = case sc of
         asyncFX <- async waitAndApply
         return asyncFX
 
+runConcurrentialK :: Concurrential t -> (Async t -> IO r) -> IO r
+runConcurrentialK sc k = case sc of
+    SCAtom ss c -> do
+        s <- ss
+        withAsync (c s) k
+    SCBind sc next -> runConcurrentialK sc $ \asyncS -> do
+        s <- wait asyncS
+        runConcurrentialK (next s) k
+    SCAp left right ->
+        runConcurrentialK left $ \asyncF ->
+        runConcurrentialK right $ \asyncX ->
+        let waitAndApply = do
+              f <- wait asyncF
+              x <- wait asyncX
+              return $ f x
+        in withAsync waitAndApply k
+
+-- | I believe it's unsafe due to runConcurrential_ being unsafe (could leave
+--   dangling threads). 
+runConcurrentialUnsafe :: Concurrential t -> IO t
+runConcurrentialUnsafe = (=<<) wait . runConcurrential_
+
 runConcurrential :: Concurrential t -> IO t
-runConcurrential = (=<<) wait . runConcurrential_
+runConcurrential c = runConcurrentialK c wait
 
 instance Functor Concurrential where
   fmap f sc = case sc of
